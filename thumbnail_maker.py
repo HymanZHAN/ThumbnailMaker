@@ -14,18 +14,27 @@ logging.basicConfig(filename='logfile.log', level=logging.DEBUG, format=FORMAT)
 
 
 class ThumbnailMakerService(object):
+    MAX_CONCURRENT_DOWNLOAD = 4
+
     def __init__(self, home_dir='.'):
         self.home_dir = home_dir
         self.input_dir = self.home_dir + os.path.sep + 'incoming'
         self.output_dir = self.home_dir + os.path.sep + 'outgoing'
         self.download_bytes = 0
+        self.download_lock = threading.Lock()
+        self.download_sem = threading.Semaphore(self.MAX_CONCURRENT_DOWNLOAD)
 
     def download_image(self, img_url):
-        logging.info(f'downloading image from url {img_url}')
-        img_filename = urlparse(img_url).path.split('/')[-1]
-        urlretrieve(img_url, self.input_dir + os.path.sep + img_filename)
-        logging.info(
-            f'image saved to {self.input_dir + os.path.sep + img_filename}')
+        with self.download_sem:
+            logging.info(f'downloading image from url {img_url}')
+            img_filename = urlparse(img_url).path.split('/')[-1]
+            dest_path = self.input_dir + os.path.sep + img_filename
+            urlretrieve(img_url, dest_path)
+            image_size = os.path.getsize(dest_path)
+            with self.download_lock:
+                self.download_bytes += image_size
+            logging.info(
+                f'image[size: {image_size} bytes] saved to {dest_path}')
 
     def download_images(self, img_url_list):
         # validate inputs
